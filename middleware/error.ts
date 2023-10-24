@@ -4,7 +4,7 @@ import ErrorHandler from "../utils/ErrorHandler";
 export const ErrorMiddleware = (
   err: any,
   req: Request,
-  res: Response,
+  resp: Response,
   next: NextFunction
 ) => {
   err.statusCode = err.statusCode || 500;
@@ -34,7 +34,7 @@ export const ErrorMiddleware = (
     err = new ErrorHandler(message, 400);
   }
 
-  res.status(err.statusCode).json({
+  resp.status(err.statusCode).json({
     status: false,
     message: err.message,
   });
