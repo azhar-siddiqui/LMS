@@ -1,10 +1,10 @@
-import Redis from "ioredis";
+import { Redis } from "ioredis";
 require("dotenv").config();
 
 const redisClient = () => {
-  if (process.env.RADIUS_URL) {
+  if (process.env.RADIS_URL) {
     console.log(`Radis Connected`);
-    return process.env.RADIUS_URL;
+    return process.env.RADIS_URL;
   }
   throw new Error(`Radis Connection failed`);
 };
