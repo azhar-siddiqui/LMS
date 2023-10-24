@@ -19,13 +19,8 @@ app.use(cors({ origin: process.env.ORIGIN }));
 // routes
 app.use("/api/v1", userRouter);
 
-// testing API
-app.get("/test", (req: Request, resp: Response, next: NextFunction) => {
-  resp.status(200).json({ success: true, message: "API is working Fine here" });
-});
-
 // Route not found
-app.all("/*", (req: Request, resp: Response, next: NextFunction) => {
+app.all("*", (req: Request, resp: Response, next: NextFunction) => {
   const err = new Error(`Route ${req.originalUrl} note found`) as any;
   err.statusCode = 404;
   next(err);
