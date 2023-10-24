@@ -9,6 +9,7 @@ require("dotenv").config();
 
 import sendEmail from "../utils/SendEmail";
 import { sendToken } from "../utils/jwt";
+import { redis } from "../utils/radis";
 
 // register User
 interface IRegistrationBody {
@@ -162,6 +163,11 @@ export const logoutUser = catchAsyncError(
     try {
       resp.cookie("accessToken", "", { maxAge: 1 });
       resp.cookie("refreshToken", "", { maxAge: 1 });
+
+      const userId = req.user?._id || "";
+
+      redis.del(userId);
+
       resp
         .status(200)
         .json({ success: true, message: "Logged out successfully" });
