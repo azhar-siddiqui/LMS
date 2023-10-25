@@ -2,14 +2,19 @@ import { Request, Response, NextFunction } from "express";
 import userModel, { IUser } from "../models/user.model";
 import ErrorHandler from "../utils/ErrorHandler";
 import { catchAsyncError } from "../middleware/catchAsyncErrors";
-import jwt, { Secret } from "jsonwebtoken";
+import jwt, { JwtPayload, Secret } from "jsonwebtoken";
 import ejs from "ejs";
 import path from "path";
 require("dotenv").config();
 
 import sendEmail from "../utils/SendEmail";
-import { sendToken } from "../utils/jwt";
+import {
+  accessTokenOptions,
+  refreshTokenOptions,
+  sendToken,
+} from "../utils/jwt";
 import { redis } from "../utils/radis";
+import { getUserById } from "../services/user.service";
 
 // register User
 interface IRegistrationBody {
@@ -73,12 +78,16 @@ interface IActivationToken {
   activationCode: string;
 }
 
+const ACTIVATION_SECRET = process.env.ACTIVATION_SECRET;
+const REFRESH_TOKEN = process.env.REFRESH_TOKEN;
+const ACCESS_TOKEN = process.env.ACCESS_TOKEN;
+
 export const createActivationToken = (user: any): IActivationToken => {
   const activationCode = Math.floor(1000 + Math.random() * 9000).toString();
 
   const token = jwt.sign(
     { user, activationCode },
-    process.env.ACTIVATION_SECRET as Secret,
+    ACTIVATION_SECRET as Secret,
     { expiresIn: "5m" }
   );
 
@@ -131,6 +140,7 @@ interface ILoginRequest {
   password: string;
 }
 
+// login user
 export const loginUser = catchAsyncError(
   async (req: Request, resp: Response, next: NextFunction) => {
     try {
@@ -158,6 +168,7 @@ export const loginUser = catchAsyncError(
   }
 );
 
+// logout user
 export const logoutUser = catchAsyncError(
   async (req: Request, resp: Response, next: NextFunction) => {
     try {
@@ -173,6 +184,91 @@ export const logoutUser = catchAsyncError(
         .json({ success: true, message: "Logged out successfully" });
     } catch (error: any) {
       return next(new ErrorHandler(error.message, 400));
+    }
+  }
+);
+
+// update access token
+export const updateAccessToken = catchAsyncError(
+  async (req: Request, resp: Response, next: NextFunction) => {
+    try {
+      const refresh_token = req.cookies.refreshToken as string;
+
+      if (!refresh_token) {
+        return next(new ErrorHandler("Please pass refresh token", 400));
+      }
+
+      const decode = jwt.verify(
+        refresh_token,
+        REFRESH_TOKEN as string
+      ) as JwtPayload;
+
+      const message = "Could not refresh token";
+      if (!decode) {
+        return next(new ErrorHandler(message, 400));
+      }
+
+      const session = await redis.get(decode.id as string);
+
+      if (!session) {
+        return next(new ErrorHandler(message, 400));
+      }
+
+      const user = JSON.parse(session);
+
+      const accessToken = jwt.sign({ id: user._id }, ACCESS_TOKEN as string, {
+        expiresIn: "5m",
+      });
+
+      const refreshToken = jwt.sign({ id: user._id }, REFRESH_TOKEN as string, {
+        expiresIn: "3d",
+      });
+
+      resp.cookie("accessToken", accessToken, accessTokenOptions);
+      resp.cookie("refreshToken", refreshToken, refreshTokenOptions);
+
+      resp.status(200).json({
+        status: "success",
+        accessToken,
+      });
+    } catch (error: any) {
+      return next(new ErrorHandler(error.message, 400));
+    }
+  }
+);
+
+// get user Info
+export const getUserInfo = catchAsyncError(
+  async (req: Request, resp: Response, next: NextFunction) => {
+    try {
+      const userId = req.user?._id;
+      getUserById(userId, resp);
+    } catch (error: any) {
+      return next(new ErrorHandler(error.message, 400));
+    }
+  }
+);
+
+interface ISocialAuthBody {
+  email: string;
+  name: string;
+  avatar: string;
+}
+
+// social auth
+export const socialAuth = catchAsyncError(
+  async (req: Request, resp: Response, next: NextFunction) => {
+    try {
+      const { email, name, avatar } = req.body as ISocialAuthBody;
+      const user = await userModel.findOne({ email });
+      if (!user) {
+        const newUser = await userModel.create({ email, name, avatar });
+        sendToken(newUser, 201, resp);
+      } else {
+        sendToken(user, 200, resp);
+      }
+    } catch (error: any) {
+      return next(new ErrorHandler(error, 400));
     }
   }
 );
