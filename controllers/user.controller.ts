@@ -14,6 +14,7 @@ import {
   sendToken,
 } from "../utils/jwt";
 import { redis } from "../utils/radis";
+import { getUserById } from "../services/user.service";
 
 // register User
 interface IRegistrationBody {
@@ -237,3 +238,37 @@ export const updateAccessToken = catchAsyncError(
 );
 
 // get user Info
+export const getUserInfo = catchAsyncError(
+  async (req: Request, resp: Response, next: NextFunction) => {
+    try {
+      const userId = req.user?._id;
+      getUserById(userId, resp);
+    } catch (error: any) {
+      return next(new ErrorHandler(error.message, 400));
+    }
+  }
+);
+
+interface ISocialAuthBody {
+  email: string;
+  name: string;
+  avatar: string;
+}
+
+// social auth
+export const socialAuth = catchAsyncError(
+  async (req: Request, resp: Response, next: NextFunction) => {
+    try {
+      const { email, name, avatar } = req.body as ISocialAuthBody;
+      const user = await userModel.findOne({ email });
+      if (!user) {
+        const newUser = await userModel.create({ email, name, avatar });
+        sendToken(newUser, 201, resp);
+      } else {
+        sendToken(user, 200, resp);
+      }
+    } catch (error: any) {
+      return next(new ErrorHandler(error, 400));
+    }
+  }
+);
