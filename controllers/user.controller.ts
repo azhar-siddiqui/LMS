@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from "express";
+import cloudinary from "cloudinary";
 import userModel, { IUser } from "../models/user.model";
 import ErrorHandler from "../utils/ErrorHandler";
 import { catchAsyncError } from "../middleware/catchAsyncErrors";
@@ -224,6 +225,8 @@ export const updateAccessToken = catchAsyncError(
         expiresIn: "3d",
       });
 
+      req.user = user;
+
       resp.cookie("accessToken", accessToken, accessTokenOptions);
       resp.cookie("refreshToken", refreshToken, refreshTokenOptions);
 
@@ -269,6 +272,146 @@ export const socialAuth = catchAsyncError(
       }
     } catch (error: any) {
       return next(new ErrorHandler(error, 400));
+    }
+  }
+);
+
+// update user Info
+interface IUpdateUserInfo {
+  name?: string;
+  email?: string;
+  // password?: string;
+}
+
+export const updateUserInfo = catchAsyncError(
+  async (req: Request, resp: Response, next: NextFunction) => {
+    try {
+      const { name, email } = req.body as IUpdateUserInfo;
+      const userId = req.user?._id;
+
+      const user = await userModel.findByIdAndUpdate(userId);
+
+      if (email && user) {
+        const isEmailExist = await userModel.findOne({ email });
+        if (isEmailExist) {
+          return next(new ErrorHandler("Email all ready Exist", 400));
+        }
+        user.email = email;
+      }
+
+      if (name && user) {
+        user.name = name;
+      }
+
+      await user?.save();
+
+      await redis.set(userId, JSON.stringify(user));
+
+      resp.status(202).json({ status: true, user });
+    } catch (error: any) {
+      return next(new ErrorHandler(error.message, 400));
+    }
+  }
+);
+
+// update user password
+interface IUpdatePassword {
+  oldPassword: string;
+  newPassword: string;
+}
+
+export const updatePassword = catchAsyncError(
+  async (req: Request, resp: Response, next: NextFunction) => {
+    try {
+      const { oldPassword, newPassword } = req.body as IUpdatePassword;
+
+      if (!oldPassword || !newPassword) {
+        return next(new ErrorHandler("Please Enter old and new password", 400));
+      }
+
+      const user = await userModel.findById(req.user?._id).select("+password");
+
+      if (oldPassword === newPassword) {
+        return next(new ErrorHandler("Please Enter New Password", 400));
+      }
+
+      if (user?.password === undefined) {
+        return next(new ErrorHandler("Invalid User", 400));
+      }
+
+      const isPasswordMatch = await user?.comparePassword(oldPassword);
+
+      if (!isPasswordMatch) {
+        return next(new ErrorHandler("Please enter correct password", 400));
+      }
+
+      user.password = newPassword;
+
+      await user.save();
+
+      await redis.set(req.user?._id, JSON.stringify(user));
+
+      const { _id, name, email, role, isVerified } = user;
+
+      resp.status(200).json({
+        success: true,
+        message: "Password Updated Successfully",
+        user: { _id, name, email, role, isVerified },
+      });
+    } catch (error: any) {
+      return next(new ErrorHandler(error.message, 400));
+    }
+  }
+);
+
+interface IUpdateProfilePicture {
+  avatar: string;
+}
+// update profile picture
+export const updateProfilePicture = catchAsyncError(
+  async (req: Request, resp: Response, next: NextFunction) => {
+    try {
+      const { avatar } = req.body as IUpdateProfilePicture;
+
+      const userId = req.user?._id;
+
+      const user = await userModel.findById(userId);
+
+      if (avatar && user) {
+        // if user have one avatar then call this
+        if (user?.avatar?.public_id) {
+          // first delete an old profile
+          await cloudinary.v2.uploader.destroy(user?.avatar?.public_id);
+
+          const myCloud = await cloudinary.v2.uploader.upload(avatar, {
+            folder: "avatars",
+            width: 150,
+          });
+
+          user.avatar = {
+            public_id: myCloud.public_id,
+            url: myCloud.secure_url,
+          };
+        } else {
+          const myCloud = await cloudinary.v2.uploader.upload(avatar, {
+            folder: "avatars",
+            width: 150,
+          });
+          user.avatar = {
+            public_id: myCloud.public_id,
+            url: myCloud.secure_url,
+          };
+        }
+      }
+
+      await user?.save();
+      await redis.set(userId, JSON.stringify(user));
+
+      resp
+        .status(200)
+        .json({ status: true, message: "Profile Uploaded", user });
+    } catch (error: any) {
+      return next(new ErrorHandler(error.message, 400));
     }
   }
 );
