@@ -4,6 +4,7 @@ import ErrorHandler from "../utils/ErrorHandler";
 import cloudinary from "cloudinary";
 import { createCourse } from "../services/course.service";
 import CourseModal from "../models/course.modal";
+import { redis } from "../utils/radis";
 
 // upload course
 export const uploadCourse = catchAsyncError(
@@ -23,6 +24,53 @@ export const uploadCourse = catchAsyncError(
         };
       }
       createCourse(data, resp, next);
+    } catch (error: any) {
+      return next(new ErrorHandler(error.message, 400));
+    }
+  }
+);
+
+// get single course
+export const getSingleCourse = catchAsyncError(
+  async (req: Request, resp: Response, next: NextFunction) => {
+    try {
+      const courseId = req.params.id;
+      /** we are checking checking in redis data for if 1000 user visit website at once but only 800
+       people are purchase the course so we are storing data in cache that why we are using redis */
+      const isCacheExist = await redis.get(courseId);
+
+      if (isCacheExist) {
+        const course = JSON.parse(isCacheExist);
+        resp.status(200).json({ status: true, course });
+      } else {
+        const course = await CourseModal.findById(courseId).select(
+          "-courseData.videoUrl -courseData.suggestion -courseData.question -courseData.links"
+        );
+        await redis.set(courseId, JSON.stringify(course));
+        resp.status(200).json({ status: true, course });
+      }
+    } catch (error: any) {
+      return next(new ErrorHandler(error.message, 400));
+    }
+  }
+);
+
+// get all course
+export const getAllCourse = catchAsyncError(
+  async (req: Request, resp: Response, next: NextFunction) => {
+    try {
+      const isCacheExist = await redis.get("allCourses");
+
+      if (isCacheExist) {
+        const courses = JSON.parse(isCacheExist);
+        resp.status(200).json({ status: true, courses });
+      } else {
+        const courses = await CourseModal.find().select(
+          "-courseData.videoUrl -courseData.suggestion -courseData.question -courseData.links"
+        );
+        await redis.set("allCourses", JSON.stringify(courses));
+        resp.status(200).json({ status: true, courses });
+      }
     } catch (error: any) {
       return next(new ErrorHandler(error.message, 400));
     }
@@ -65,16 +113,12 @@ export const editCourse = catchAsyncError(
   }
 );
 
-// get sing course
-export const getSingleCourse = catchAsyncError(
+export const deleteCourse = catchAsyncError(
   async (req: Request, resp: Response, next: NextFunction) => {
     try {
-      const { id } = req.params;
-      const course = await CourseModal.findById(id).select(
-        "-courseData.videoUrl -courseData.suggestion -courseData.question -courseData.links"
-      );
+      const course = await CourseModal.findOneAndDelete(req.body.id);
 
-      resp.status(200).json({ status: true, course });
+      resp.status(200).json({ status: true, message: "" });
     } catch (error: any) {
       return next(new ErrorHandler(error.message, 400));
     }
