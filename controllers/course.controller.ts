@@ -113,12 +113,39 @@ export const editCourse = catchAsyncError(
   }
 );
 
+// delete course only admin can delete this
 export const deleteCourse = catchAsyncError(
   async (req: Request, resp: Response, next: NextFunction) => {
     try {
       const course = await CourseModal.findOneAndDelete(req.body.id);
 
       resp.status(200).json({ status: true, message: "" });
+    } catch (error: any) {
+      return next(new ErrorHandler(error.message, 400));
+    }
+  }
+);
+
+// get all course content for purchased user only
+export const getCourseByUser = catchAsyncError(
+  async (req: Request, resp: Response, next: NextFunction) => {
+    try {
+      const userCourseList = req.user?.courses;
+      const courseId = req.params.id;
+
+      const courseExist = userCourseList?.find(
+        (course: any) => course._id === courseId
+      );
+
+      if (!courseExist) {
+        return next(
+          new ErrorHandler("You are not eligible to access this course", 404)
+        );
+      }
+
+      const course = await CourseModal.findById(courseId);
+      const courseContent = course?.courseData;
+      resp.status(200).json({ status: true, course: courseContent });
     } catch (error: any) {
       return next(new ErrorHandler(error.message, 400));
     }
