@@ -6,6 +6,7 @@ import cors from "cors";
 import cookieParser from "cookie-parser";
 import { ErrorMiddleware } from "./middleware/error";
 import userRouter from "./routes/user.route";
+import courseRouter from "./routes/course.route";
 
 // body Parser
 app.use(express.json({ limit: "50mb" }));
@@ -18,6 +19,7 @@ app.use(cors({ origin: process.env.ORIGIN }));
 
 // routes
 app.use("/api/v1", userRouter);
+app.use("/api/v1", courseRouter);
 
 // Route not found
 app.all("*", (req: Request, resp: Response, next: NextFunction) => {
